@@ -1,14 +1,11 @@
 import cv2
 import numpy as np
-import autopy
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python.vision import HandLandmarker, HandLandmarkerOptions, RunningMode
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
-
-SCREEN_WIDTH = 2560
-SCREEN_HEIGHT = 1440
+from mouse_controller import MouseController
 
 WIDTH = 800
 HEIGHT = 600
@@ -57,48 +54,50 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
   return annotated_image
 
-# Drawing utils
-mp_drawing = mp.solutions.drawing_utils
-mp_styles = mp.solutions.drawing_styles
+def main():
+  mouse_controller = MouseController()
 
-# Create options
-options = HandLandmarkerOptions(
-    base_options=mp.tasks.BaseOptions(model_asset_path=MODEL_PATH),
-    running_mode=RunningMode.VIDEO,   # or IMAGE if single image
-    min_hand_detection_confidence=0.5,
-    num_hands = 2,
-    min_hand_presence_confidence=0.5,
-    min_tracking_confidence=0.5,
-)
+  # Create options
+  options = HandLandmarkerOptions(
+      base_options=mp.tasks.BaseOptions(model_asset_path=MODEL_PATH),
+      running_mode=RunningMode.VIDEO,   # or IMAGE if single image
+      min_hand_detection_confidence=0.5,
+      num_hands = 2,
+      min_hand_presence_confidence=0.5,
+      min_tracking_confidence=0.5,
+  )
 
-# Create the hand landmarker
-with HandLandmarker.create_from_options(options) as landmarker:
-    cap = cv2.VideoCapture(0)  # webcam
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        frame = cv2.resize(frame, (WIDTH, HEIGHT))
-        # Convert BGR (OpenCV) to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+  # Create the hand landmarker
+  with HandLandmarker.create_from_options(options) as landmarker:
+      cap = cv2.VideoCapture(4)  # webcam
+      while True:
+          ret, frame = cap.read()
+          if not ret:
+              break
+          
+          # frame = cv2.resize(frame, (WIDTH, HEIGHT))
+          # Convert BGR (OpenCV) to RGB
+          frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+          # Create mp.Image from numpy array
+          mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
-        # Create mp.Image from numpy array
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+          # Timestamp in ms (just use frame count or time)
+          timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
 
-        # Timestamp in ms (just use frame count or time)
-        timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+          # Detect landmarks
+          result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
-        # Detect landmarks
-        result = landmarker.detect_for_video(mp_image, timestamp_ms)
+          # If hands detected, draw
+          annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), result)
+          cv2.imshow("cam", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
 
-        # If hands detected, draw
-        annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), result)
-        cv2.imshow("cam", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+          mouse_controller.move_mouse(result)
 
+          if cv2.waitKey(1) & 0xFF == 27:
+              break
 
-        if cv2.waitKey(1) & 0xFF == 27:
-            break
+      cap.release()
+      cv2.destroyAllWindows()
 
-    cap.release()
-    cv2.destroyAllWindows()
+if __name__ == "__main__":
+   main()
